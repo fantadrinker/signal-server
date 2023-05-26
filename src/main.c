@@ -124,8 +124,11 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
                 memcpy(message, "Error finding broadcaster", len);
             }
             printf("found broadcaster %p\n", broadcaster);
-            lws_write(broadcaster, msg, len, LWS_WRITE_TEXT);
+            unsigned char *buf = malloc(LWS_SEND_BUFFER_PRE_PADDING + len + LWS_SEND_BUFFER_POST_PADDING);
+            memcpy(buf + LWS_SEND_BUFFER_PRE_PADDING, msg, len);
+            lws_write(broadcaster, buf + LWS_SEND_BUFFER_PRE_PADDING, len, LWS_WRITE_TEXT);
             printf("sent message to broadcaster\n");
+            free(buf);
             break;
         default:
             message_len = strlen("Unknown message type: ") + 3;
