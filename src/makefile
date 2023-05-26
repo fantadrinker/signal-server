@@ -8,7 +8,7 @@ signal-server: $(objects)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(objects) -o signal-server $(LDFLAGS)
 
 %.o : %.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(objects) signal-server
