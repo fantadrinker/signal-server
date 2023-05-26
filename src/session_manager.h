@@ -12,14 +12,12 @@ const char* new_broadcast(const char* broadcast_id, struct lws* broadcaster);
 
 const char* new_session(struct lws* broadcaster, struct lws* viewer);
 
-int free_broadcast(const char *broadcast_id);
+int free_broadcast(struct lws* broadcaster);
 
-int free_session(char* session_id);
+int free_session_with_viewer(struct lws* viewer);
 
-struct lws* find_broadcaster(const char* session_id, const struct lws* viewer);
+struct lws* find_broadcaster(const char* session_id);
 
-void broadcast_message(struct lws* broadcaster, char* message);
-
-void send_message(const char* session_id, unsigned char* message, size_t len, int fromBroadcaster);
+struct lws* find_viewer(const char* session_id);
 
 const char* join_broadcast(struct lws* viewer, const char* broadcast_id);

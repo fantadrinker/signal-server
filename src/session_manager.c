@@ -3,26 +3,6 @@
 #include <uuid/uuid.h>
 
 #include "session_manager.h"
-
-#define MAX_VIEWERS 10
-/*
-enum SessionMessageType {
-    VIEWER_OFFER,
-    BROADCASTER_ANSWER,
-    NEW_ICE_CANDIDATE
-};
-struct SessionMessage {
-    enum SessionMessageType type;
-    char* text;
-};
-
-enum MessageType {
-    BROADCASTER_INIT,
-    BROADCASTER_MESSAGE,
-    VIEWER_MESSAGE,
-};
-*/
-
 // some global variables
 struct Broadcast {
     // unique identifier for the session
@@ -44,9 +24,9 @@ struct BroadcastSession {
     struct BroadcastSession *next;
 };
 
-struct Broadcast* broadcasts;
+struct Broadcast* broadcasts = NULL;
 
-struct BroadcastSession* broadcast_sessions;
+struct BroadcastSession* broadcast_sessions = NULL;
 
 // need to free later
 char* gen_sesh_id() {
@@ -55,11 +35,6 @@ char* gen_sesh_id() {
     char* session_id = malloc(37);
     uuid_unparse(uuid, session_id);
     return session_id;
-}
-
-void init_session_manager() {
-    broadcasts = NULL;
-    broadcast_sessions = NULL;
 }
 
 struct Broadcast* find_broadcast(const char* broadcast_id) {
@@ -122,23 +97,24 @@ const char* new_session(struct lws* broadcaster, struct lws* viewer) {
     return session -> session_id;
 }
 
-// for a given session id and viewer, find the broadcaster socket
-struct lws* find_broadcaster(const char* session_id, const struct lws* viewer) {
-    // find the broadcaster socket
-    struct BroadcastSession* session = NULL;
-    struct BroadcastSession* ptr = broadcast_sessions;
-    while (ptr) {
-        if (strcmp(ptr->session_id, session_id) == 0) {
-            session = ptr;
-            break;
+struct BroadcastSession* find_session(const char* session_id) {
+    struct BroadcastSession* current_session = broadcast_sessions;
+    while (current_session) {
+        if (strcmp(current_session->session_id, session_id) == 0) {
+            return current_session;
         }
-        ptr = ptr->next;
+        current_session = current_session->next;
     }
-    if (!session) {
-        printf("Session not found\n");
-        return NULL;
-    }
-    return session->broadcaster;
+    return NULL;
+}
+
+// for a given session id and viewer, find the broadcaster socket
+struct lws* find_broadcaster(const char* session_id) {
+    return find_session(session_id)->broadcaster;
+}
+
+struct lws* find_viewer(const char* session_id) {
+    return find_session(session_id)->viewer;
 }
 
 const char* join_broadcast(struct lws* viewer, const char* broadcast_id) {
@@ -151,60 +127,33 @@ const char* join_broadcast(struct lws* viewer, const char* broadcast_id) {
     return new_session(broadcast->broadcaster, viewer);
 }
 
-void send_message(const char* session_id, unsigned char* message, size_t len, int fromBroadcaster){
-    // find the session with the given id
-    struct BroadcastSession* session = NULL;
-    struct BroadcastSession* ptr = broadcast_sessions;
+void debug_print_all_broadcasts() {
+    struct Broadcast* ptr = broadcasts;
     while (ptr) {
-        if (strcmp(ptr->session_id, session_id) == 0) {
-            session = ptr;
-            break;
-        }
+        printf("Broadcast %s\n", ptr->broadcast_id);
         ptr = ptr->next;
     }
-    if (!session) {
-        printf("Session not found\n");
-        return;
-    }
-    // send message to broadcaster
-    if (fromBroadcaster) {
-        lws_write(session->viewer, message, len, LWS_WRITE_TEXT);
-    } else {
-        lws_write(session->broadcaster, message, len, LWS_WRITE_TEXT);
-    }
-    return;
 }
 
-void broadcast_message(struct lws* broadcaster, char* message) {
-    // find the session with the given id
-    int sent = 0;
-    struct BroadcastSession* session = NULL;
+void debug_print_all_sessions() {
     struct BroadcastSession* ptr = broadcast_sessions;
     while (ptr) {
-        if (broadcaster == ptr->broadcaster) {
-            // send message to viewer in the session
-            lws_write(ptr->viewer, (unsigned char*)message, strlen(message)+1, LWS_WRITE_TEXT);
-            sent += 1;
-        }
+        printf("Session %s\n", ptr->session_id);
         ptr = ptr->next;
     }
-    if (sent == 0) {
-        printf("Session not found\n");
-    } else {
-        printf("Broadcasted message %s to %d viewers\n", message, sent);
-    }
-    return;
 }
 
 /**
- * frees the broadcast with given id, and all sessions with the given id
+ * frees the broadcast with given socket id, and all sessions with the given id
 */
-int free_broadcast(const char *broadcast_id) {
+int free_broadcast(struct lws* wsi) {
+    printf("freeing broadcast\n");
     struct Broadcast* broadcast = NULL;
     // find the broadcast with the given id
     struct Broadcast* ptr = broadcasts;
+    struct Broadcast* prev = NULL;
     while (ptr) {
-        if (strcmp(ptr->broadcast_id, broadcast_id) == 0) {
+        if (ptr -> broadcaster == wsi) {
             broadcast = ptr;
             break;
         }
@@ -214,13 +163,17 @@ int free_broadcast(const char *broadcast_id) {
         printf("Broadcast not found\n");
         return 0;
     }
-    struct lws* broadcaster = broadcast -> broadcaster;
+    if (prev == NULL) {
+        broadcasts = ptr->next;
+    } else {
+        prev->next = ptr->next;
+    }
 
     // then find all the sessions with the given broadcaster socket
     struct BroadcastSession* sess_prev = NULL;
     struct BroadcastSession* sess_ptr = broadcast_sessions;
     while (sess_ptr) {
-        if (sess_ptr->broadcaster == broadcaster) {
+        if (sess_ptr->broadcaster == wsi) {
             // free the session
             if (sess_prev == NULL) {
                 broadcast_sessions = sess_ptr->next;
@@ -240,21 +193,34 @@ int free_broadcast(const char *broadcast_id) {
     }
     free(broadcast->broadcast_id);
     free(broadcast);
+    // debug print 
+    debug_print_all_broadcasts();
+    debug_print_all_sessions();
     return 0;
 }
 
-int free_session_by_id(char* session_id) {
+int free_session_with_viewer(struct lws* viewer) {
     struct BroadcastSession* session = NULL;
     // find the session with the given id
     struct BroadcastSession* ptr = broadcast_sessions;
+    struct BroadcastSession* prev = NULL;
     while (ptr) {
-        if (strcmp(ptr->session_id, session_id) == 0) {
+        if (ptr -> viewer == viewer) {
             session = ptr;
             break;
         }
+        prev = ptr;
         ptr = ptr->next;
+    }
+    if (!session) {
+        printf("Session not found\n");
+        return 0;
+    }
+    if (prev == NULL) {
+        broadcast_sessions = ptr->next;
+    } else {
+        prev->next = ptr->next;
     }
     free(session->session_id);
     free(session);
-    return 0;
 }
