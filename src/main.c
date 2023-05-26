@@ -5,6 +5,8 @@
 #include "msg_frag_manager.h"
 // some global variables
 
+static int port = 8000;
+
 static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size_t len) {
     printf("broadcast-protocol: Received data: %s\n", (char*)msg);
     printf("broadcast-protocol: Received data of length: %d\n", (int)len);
@@ -257,7 +259,7 @@ int main(void)
     };
 
     memset(&info, 0, sizeof(info));
-    info.port = 8000;
+    info.port = port;
     info.protocols = protocols;
 
     // Create the WebSocket context
