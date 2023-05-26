@@ -5,6 +5,15 @@
 #include "msg_frag_manager.h"
 // some global variables
 
+static int port = 8000;
+
+void lws_padded_write(struct lws *wsi, const char* message, size_t len) {
+    unsigned char* buf = malloc(LWS_PRE + len);
+    memcpy(buf + LWS_PRE, message, len);
+    lws_write(wsi, buf + LWS_PRE, len, LWS_WRITE_TEXT);
+    free(buf);
+}
+
 static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size_t len) {
     printf("broadcast-protocol: Received data: %s\n", (char*)msg);
     printf("broadcast-protocol: Received data of length: %d\n", (int)len);
@@ -54,7 +63,7 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
                 break;
             }
             printf("found viewer, sending message to viewer\n");
-            lws_write(viewer, msg, len, LWS_WRITE_TEXT);
+            lws_padded_write(viewer, (char*)msg, len);
             break;
         default:
             message_len = strlen("Unknown message type: ") + 3;
@@ -63,11 +72,8 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
             break;
     }
     if (message) {
-        unsigned char *buf = malloc(LWS_SEND_BUFFER_PRE_PADDING + message_len + LWS_SEND_BUFFER_POST_PADDING);
-        memcpy(buf + LWS_SEND_BUFFER_PRE_PADDING, message, message_len);
-        lws_write(wsi, buf + LWS_SEND_BUFFER_PRE_PADDING, message_len, LWS_WRITE_TEXT);
+        lws_padded_write(wsi, message, message_len);
         free(message);
-        free(buf);
     }
     // clean up
     json_object_put(jobj); // frees object
@@ -122,7 +128,7 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
                 memcpy(message, "Error finding broadcaster", len);
             }
             printf("found broadcaster %p\n", broadcaster);
-            lws_write(broadcaster, msg, len, LWS_WRITE_TEXT);
+            lws_padded_write(broadcaster, (char*)msg, len);
             printf("sent message to broadcaster\n");
             break;
         default:
@@ -133,11 +139,8 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
     }
     printf("exiting event loop\n");
     if (message) {
-        unsigned char *buf = malloc(LWS_SEND_BUFFER_PRE_PADDING + message_len + LWS_SEND_BUFFER_POST_PADDING);
-        memcpy(buf + LWS_SEND_BUFFER_PRE_PADDING, message, message_len);
-        lws_write(wsi, buf + LWS_SEND_BUFFER_PRE_PADDING, message_len, LWS_WRITE_TEXT);
+        lws_padded_write(wsi, message, message_len);
         free(message);
-        free(buf);
     }
     json_object_put(jobj); // frees object
     if (!wsi) {
@@ -257,7 +260,7 @@ int main(void)
     };
 
     memset(&info, 0, sizeof(info));
-    info.port = 8000;
+    info.port = port;
     info.protocols = protocols;
 
     // Create the WebSocket context
