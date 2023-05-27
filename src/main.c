@@ -195,7 +195,7 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
                 memcpy(msg + existing_msg_len, in, len);
                 broadcaster_message_handler(wsi, msg, len + existing_msg_len);
                 // we could free the message here, but it's going to be hard to manage
-                printf("message processed, freeing fragments\n")
+                printf("message processed, freeing fragments\n");
                 free_fragments(wsi);
             } else
                 create_or_append_fragment(wsi, in, len);
