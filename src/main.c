@@ -102,8 +102,8 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
             printf("joining broadcast\n");
             const char* sess_id = join_broadcast(wsi, broadcast_id);
             if (!sess_id) {
-                size_t len = strlen("Error joining broadcast") + 1;
-                message = malloc(len);
+                message_len = strlen("Error joining broadcast") + 1;
+                message = malloc(message_len);
                 memcpy(message, "Error joining broadcast", len);
                 retval = -1;
             }
@@ -124,7 +124,7 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
             );
             struct lws* broadcaster = find_broadcaster(session_id);
             if (!broadcaster) {
-                size_t len = strlen("Error finding broadcaster") + 1;
+                message_len = strlen("Error finding broadcaster") + 1;
                 message = malloc(len);
                 memcpy(message, "Error finding broadcaster", len);
             }
@@ -186,16 +186,16 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
             unsigned char* msg = get_message_fragment(wsi, &existing_msg_len);
             const size_t remaining = lws_remaining_packet_payload(wsi);
             if (!remaining && lws_is_final_fragment(wsi)) {
-                if (msg) {
-                    msg = realloc(msg, len + existing_msg_len);
-                    memcpy(msg + existing_msg_len, in, len);
-                } else {
+                if (!msg) {
                     // no fragments, just process the message
                     broadcaster_message_handler(wsi, in, len);
                     break;
                 }
+                msg = realloc(msg, len + existing_msg_len);
+                memcpy(msg + existing_msg_len, in, len);
                 broadcaster_message_handler(wsi, msg, len + existing_msg_len);
                 // we could free the message here, but it's going to be hard to manage
+                printf("message processed, freeing fragments\n")
                 free_fragments(wsi);
             } else
                 create_or_append_fragment(wsi, in, len);
