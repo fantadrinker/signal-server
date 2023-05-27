@@ -61,4 +61,5 @@ void free_fragments(struct lws* sock) {
         prev = ptr;
         ptr = ptr->next;
     }
+    printf("free_fragments: socket not found\n");
 }

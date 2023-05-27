@@ -157,6 +157,7 @@ int free_broadcast(struct lws* wsi) {
             broadcast = ptr;
             break;
         }
+        prev = ptr;
         ptr = ptr->next;
     }
     if (!broadcast) {
@@ -223,4 +224,5 @@ int free_session_with_viewer(struct lws* viewer) {
     }
     free(session->session_id);
     free(session);
+    return 0;
 }

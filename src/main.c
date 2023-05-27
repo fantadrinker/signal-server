@@ -115,6 +115,7 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
             message_len = strlen(response_str);
             message = malloc(message_len);
             memcpy(message, response_str, message_len);
+            json_object_put(response_obj);
             break;
         case VIEWER_MESSAGE:
             ; // empty statement to fix compiler error
@@ -262,6 +263,8 @@ int main(void)
     memset(&info, 0, sizeof(info));
     info.port = port;
     info.protocols = protocols;
+
+    printf("Starting server on port %d\n, pid %d\n", port, getpid());
 
     // Create the WebSocket context
     context = lws_create_context(&info);
