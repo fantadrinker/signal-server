@@ -56,6 +56,7 @@ void free_fragments(struct lws* sock) {
             }
             free(ptr->message);
             free(ptr);
+            printf("free_fragments: freed fragments\n");
             return;
         }
         prev = ptr;
