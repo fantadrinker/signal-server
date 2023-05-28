@@ -197,7 +197,7 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
                 // we could free the message here, but it's going to be hard to manage
                 printf("message processed, freeing fragments\n");
                 free_fragments(wsi);
-                printf("fragments freed\n")
+                printf("fragments freed\n");
             } else
                 create_or_append_fragment(wsi, in, len);
             break;
