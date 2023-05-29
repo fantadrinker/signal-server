@@ -75,7 +75,7 @@ void free_fragments(struct lws* sock) {
             } else {
                 fragments = ptr->next;
             }
-            free(ptr->message);
+            // free(ptr->message);
             free(ptr);
             pthread_mutex_unlock(&fragments_lock);
             printf("free_fragments: freed fragments\n");
