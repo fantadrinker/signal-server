@@ -33,14 +33,13 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
     switch (type) {
         case BROADCASTER_INIT:
             ; // empty statement to fix compiler error
-            printf("creating new broadcast\n");
             const char* br_id = new_broadcast(broadcast_id, wsi);
             if (br_id == NULL) {
                 size_t len = strlen("Error creating broadcast") + 1;
                 message = malloc(len);
                 memcpy(message, "Error creating broadcast", len);
             }
-            printf("created new broadcast %s\n", br_id);
+            printf("created new broadcast %s with socket %p\n", br_id, wsi);
             struct json_object *response_obj = json_object_new_object();
             json_object_object_add(response_obj, "broadcast_id", json_object_new_string(br_id));
             json_object_object_add(response_obj, "message_type", json_object_new_string("broadcast_created")); // TODO: constant
@@ -64,6 +63,7 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
             }
             printf("found viewer, sending message to viewer\n");
             lws_padded_write(viewer, (char*)msg, len);
+            // lws_callback_on_writable(viewer);
             break;
         default:
             message_len = strlen("Unknown message type: ") + 3;
@@ -129,7 +129,8 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
                 memcpy(message, "Error finding broadcaster", len);
             }
             printf("found broadcaster %p\n", broadcaster);
-            lws_padded_write(broadcaster, (char*)msg, len);
+            lws_padded_write(broadcaster, (char*)msg, len); // fail
+            // lws_callback_on_writable(broadcaster);
             printf("sent message to broadcaster\n");
             break;
         default:
@@ -201,6 +202,9 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
             } else
                 create_or_append_fragment(wsi, in, len);
             break;
+        case LWS_CALLBACK_SERVER_WRITEABLE:
+            printf("broadcaster protocol: server writeable\n");
+            break;
         case LWS_CALLBACK_CLOSED:
             printf("Connection closed\n");
             // TODO: find broadcast session and clean it up
@@ -240,6 +244,9 @@ static int callback_viewer(struct lws *wsi, enum lws_callback_reasons reason, vo
                 free_fragments(wsi);
             } else
                 create_or_append_fragment(wsi, in, len);
+            break;
+        case LWS_CALLBACK_SERVER_WRITEABLE:
+            printf("viewer protocol: server writeable\n");
             break;
         case LWS_CALLBACK_CLOSED:
             printf("viewer protocol: Connection closed\n");
