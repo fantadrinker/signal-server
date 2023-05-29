@@ -219,7 +219,6 @@ int free_broadcast(struct lws* wsi) {
                 sess_ptr = broadcast_sessions;
             } else {
                 sess_prev->next = sess_ptr->next;
-                sess_ptr = sess_prev->next;
             }
             break;
         } else {
