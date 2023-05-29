@@ -213,7 +213,7 @@ int free_broadcast(struct lws* wsi) {
     while (sess_ptr) {
         if (sess_ptr->broadcaster == wsi) {
             // free the session
-            if (sess_prev) {
+            if (!sess_prev) {
                 broadcast_sessions = sess_ptr->next;
                 sess_ptr = broadcast_sessions;
             } else {
