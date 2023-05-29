@@ -41,7 +41,7 @@ struct BroadcastSession {
 pthread_mutex_t broadcast_lock = PTHREAD_MUTEX_INITIALIZER;
 struct Broadcast* broadcasts = NULL;
 
-// pthread_mutex_t broadcast_session_lock = pthread_mutex_INITIALIZER;
+pthread_mutex_t broadcast_session_lock = PTHREAD_MUTEX_INITIALIZER;
 struct BroadcastSession* broadcast_sessions = NULL;
 
 // need to free later
@@ -103,7 +103,7 @@ const char* new_session(struct lws* broadcaster, struct lws* viewer) {
     session->broadcaster = broadcaster;
     session->viewer = viewer;
 
-    pthread_mutex_lock(&broadcast_lock);
+    pthread_mutex_lock(&broadcast_session_lock);
     // add the session to the list of sessions
     if (!broadcast_sessions) {
         broadcast_sessions = session;
@@ -114,21 +114,21 @@ const char* new_session(struct lws* broadcaster, struct lws* viewer) {
         }
         current_session->next = session;
     }
-    pthread_mutex_unlock(&broadcast_lock);
+    pthread_mutex_unlock(&broadcast_session_lock);
     return session -> session_id;
 }
 
 struct BroadcastSession* find_session(const char* session_id) {
-    pthread_mutex_lock(&broadcast_lock);
+    pthread_mutex_lock(&broadcast_session_lock);
     struct BroadcastSession* current_session = broadcast_sessions;
     while (current_session) {
         if (strcmp(current_session->session_id, session_id) == 0) {
-            pthread_mutex_unlock(&broadcast_lock);
+            pthread_mutex_unlock(&broadcast_session_lock);
             return current_session;
         }
         current_session = current_session->next;
     }
-    pthread_mutex_unlock(&broadcast_lock);
+    pthread_mutex_unlock(&broadcast_session_lock);
     return NULL;
 }
 
@@ -144,7 +144,7 @@ void queue_message_for_session(const char* session_id, int is_broadcaster, unsig
     session_message->len = len;
     session_message->next = NULL;
 
-    pthread_mutex_lock(&broadcast_lock);
+    pthread_mutex_lock(&broadcast_session_lock);
     if (is_broadcaster) {
         if (!session->broadcaster_messages) {
             session->broadcaster_messages = session_message;
@@ -166,7 +166,7 @@ void queue_message_for_session(const char* session_id, int is_broadcaster, unsig
             current_message->next = session_message;
         }
     }
-    pthread_mutex_unlock(&broadcast_lock);
+    pthread_mutex_unlock(&broadcast_session_lock);
 }
 
 struct SessionMessage* pop_message_for_session(const char* session_id, int is_broadcaster) {
@@ -176,7 +176,7 @@ struct SessionMessage* pop_message_for_session(const char* session_id, int is_br
         return NULL;
     }
     struct SessionMessage* session_message = NULL;
-    pthread_mutex_lock(&broadcast_lock);
+    pthread_mutex_lock(&broadcast_session_lock);
     if (is_broadcaster) {
         session_message = session->broadcaster_messages;
         session->broadcaster_messages = session->broadcaster_messages->next;
@@ -184,7 +184,7 @@ struct SessionMessage* pop_message_for_session(const char* session_id, int is_br
         session_message = session->viewer_messages;
         session->viewer_messages = session->viewer_messages->next;
     }
-    pthread_mutex_unlock(&broadcast_lock);
+    pthread_mutex_unlock(&broadcast_session_lock);
     return session_message;
 }
 
@@ -210,23 +210,19 @@ const char* join_broadcast(struct lws* viewer, const char* broadcast_id) {
 }
 
 void debug_print_all_broadcasts() {
-    pthread_mutex_lock(&broadcast_lock);
     struct Broadcast* ptr = broadcasts;
     while (ptr) {
         printf("Broadcast %s\n", ptr->broadcast_id);
         ptr = ptr->next;
     }
-    pthread_mutex_unlock(&broadcast_lock);
 }
 
 void debug_print_all_sessions() {
-    pthread_mutex_lock(&broadcast_lock);
     struct BroadcastSession* ptr = broadcast_sessions;
     while (ptr) {
         printf("Session %s\n", ptr->session_id);
         ptr = ptr->next;
     }
-    pthread_mutex_unlock(&broadcast_lock);
 }
 
 /**
@@ -258,7 +254,7 @@ int free_broadcast(struct lws* wsi) {
         prev->next = ptr->next;
     }
     pthread_mutex_unlock(&broadcast_lock);
-    pthread_mutex_lock(&broadcast_lock);
+    pthread_mutex_lock(&broadcast_session_lock);
     // then find all the sessions with the given broadcaster socket
     struct BroadcastSession* sess_prev = NULL;
     struct BroadcastSession* found_session = NULL;
@@ -280,7 +276,7 @@ int free_broadcast(struct lws* wsi) {
             sess_ptr = sess_ptr->next;
         }
     }
-    pthread_mutex_unlock(&broadcast_lock);
+    pthread_mutex_unlock(&broadcast_session_lock);
     if (found_session) {
         free(found_session->session_id);
         free(found_session);
@@ -288,13 +284,17 @@ int free_broadcast(struct lws* wsi) {
     free(broadcast->broadcast_id);
     free(broadcast);
     // debug print 
+    pthread_mutex_lock(&broadcast_lock);
     debug_print_all_broadcasts();
+    pthread_mutex_unlock(&broadcast_lock);
+    pthread_mutex_lock(&broadcast_session_lock);
     debug_print_all_sessions();
+    pthread_mutex_unlock(&broadcast_session_lock);
     return 0;
 }
 
 int free_session_with_viewer(struct lws* viewer) {
-    pthread_mutex_lock(&broadcast_lock);
+    pthread_mutex_lock(&broadcast_session_lock);
     struct BroadcastSession* session = NULL;
     // find the session with the given id
     struct BroadcastSession* ptr = broadcast_sessions;
@@ -309,7 +309,7 @@ int free_session_with_viewer(struct lws* viewer) {
     }
     if (!session) {
         printf("Session not found\n");
-        pthread_mutex_unlock(&broadcast_lock);
+        pthread_mutex_unlock(&broadcast_session_lock);
         return 0;
     }
     if (prev == NULL) {
@@ -317,7 +317,7 @@ int free_session_with_viewer(struct lws* viewer) {
     } else {
         prev->next = ptr->next;
     }
-    pthread_mutex_unlock(&broadcast_lock);
+    pthread_mutex_unlock(&broadcast_session_lock);
     free(session->session_id);
     free(session);
     return 0;
