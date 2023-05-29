@@ -52,7 +52,7 @@ void create_or_append_fragment(struct lws* sock, unsigned char* frag, size_t len
     pthread_mutex_unlock(&fragments_lock);
 }
 
-void debug_print_all_fragments() {
+void _debug_print_all_fragments() {
     pthread_mutex_lock(&fragments_lock);
     struct MessageFragment* ptr = fragments;
     while (ptr) {
@@ -63,7 +63,7 @@ void debug_print_all_fragments() {
 }
 
 void free_fragments(struct lws* sock) {
-    debug_print_all_fragments();
+    // _debug_print_all_fragments();
     pthread_mutex_lock(&fragments_lock);
     struct MessageFragment* ptr = fragments;
     struct MessageFragment* prev = NULL;

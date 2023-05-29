@@ -13,3 +13,7 @@
 ### json-c
 
     sudo apt install libjson-c-dev
+
+### uuid
+
+    sudo apt-get install uuid-dev

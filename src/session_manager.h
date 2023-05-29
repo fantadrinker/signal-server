@@ -6,6 +6,7 @@ enum MessageType {
     BROADCASTER_MESSAGE,
     VIEWER_JOIN,
     VIEWER_MESSAGE,
+    PONG,
 };
 
 const char* new_broadcast(const char* broadcast_id, struct lws* broadcaster);

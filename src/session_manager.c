@@ -15,6 +15,10 @@ struct Broadcast {
     char* broadcast_id;
     // web socket between the server and the broadcaster
     struct lws* broadcaster;
+    // flag to indicate if broadcaster responded to ping, if not then we can disconnect the broadcast
+    int sent_ping;
+
+    struct SessionMessage* messages;
 
     struct Broadcast *next;
 };
@@ -27,9 +31,9 @@ struct BroadcastSession {
     // array of web sockets between the server and the viewers
     struct lws* viewer;
 
-    struct SessionMessage* viewer_messages;
+    int sent_ping;
 
-    struct SessionMessage* broadcaster_messages;
+    struct SessionMessage* messages;
 
     struct BroadcastSession *next;
 };
@@ -79,6 +83,7 @@ const char* new_broadcast(const char* broadcast_id, struct lws* broadcaster) {
     broadcast->broadcast_id = malloc(len_broadcast_id);
     memcpy(broadcast->broadcast_id, broadcast_id, len_broadcast_id);
     broadcast->broadcaster = broadcaster;
+    broadcast->sent_ping = 0;
 
     printf("registering new broadcast with id %s\n", broadcast_id);
     // add the broadcast to the list of broadcasts
@@ -102,6 +107,7 @@ const char* new_session(struct lws* broadcaster, struct lws* viewer) {
     session->session_id = gen_sesh_id();
     session->broadcaster = broadcaster;
     session->viewer = viewer;
+    session->sent_ping = 0;
 
     pthread_mutex_lock(&broadcast_session_lock);
     // add the session to the list of sessions
@@ -118,7 +124,7 @@ const char* new_session(struct lws* broadcaster, struct lws* viewer) {
     return session -> session_id;
 }
 
-struct BroadcastSession* find_session(const char* session_id) {
+struct BroadcastSession* _find_session(const char* session_id) {
     pthread_mutex_lock(&broadcast_session_lock);
     struct BroadcastSession* current_session = broadcast_sessions;
     while (current_session) {
@@ -132,69 +138,13 @@ struct BroadcastSession* find_session(const char* session_id) {
     return NULL;
 }
 
-void queue_message_for_session(const char* session_id, int is_broadcaster, unsigned char* message, size_t len) {
-    struct BroadcastSession* session = find_session(session_id);
-    if (!session) {
-        printf("Session not found\n");
-        return;
-    }
-    struct SessionMessage* session_message = malloc(sizeof(struct SessionMessage));
-    session_message->message = malloc(len);
-    memcpy(session_message->message, message, len);
-    session_message->len = len;
-    session_message->next = NULL;
-
-    pthread_mutex_lock(&broadcast_session_lock);
-    if (is_broadcaster) {
-        if (!session->broadcaster_messages) {
-            session->broadcaster_messages = session_message;
-        } else {
-            struct SessionMessage* current_message = session->broadcaster_messages;
-            while (current_message->next) {
-                current_message = current_message->next;
-            }
-            current_message->next = session_message;
-        }
-    } else {
-        if (!session->viewer_messages) {
-            session->viewer_messages = session_message;
-        } else {
-            struct SessionMessage* current_message = session->viewer_messages;
-            while (current_message->next) {
-                current_message = current_message->next;
-            }
-            current_message->next = session_message;
-        }
-    }
-    pthread_mutex_unlock(&broadcast_session_lock);
-}
-
-struct SessionMessage* pop_message_for_session(const char* session_id, int is_broadcaster) {
-    struct BroadcastSession* session = find_session(session_id);
-    if (!session) {
-        printf("Session not found\n");
-        return NULL;
-    }
-    struct SessionMessage* session_message = NULL;
-    pthread_mutex_lock(&broadcast_session_lock);
-    if (is_broadcaster) {
-        session_message = session->broadcaster_messages;
-        session->broadcaster_messages = session->broadcaster_messages->next;
-    } else {
-        session_message = session->viewer_messages;
-        session->viewer_messages = session->viewer_messages->next;
-    }
-    pthread_mutex_unlock(&broadcast_session_lock);
-    return session_message;
-}
-
 // for a given session id and viewer, find the broadcaster socket
 struct lws* find_broadcaster(const char* session_id) {
-    return find_session(session_id)->broadcaster;
+    return _find_session(session_id)->broadcaster;
 }
 
 struct lws* find_viewer(const char* session_id) {
-    return find_session(session_id)->viewer;
+    return _find_session(session_id)->viewer;
 }
 
 const char* join_broadcast(struct lws* viewer, const char* broadcast_id) {
