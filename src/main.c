@@ -247,6 +247,8 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
             lws_padded_write(wsi, bc_msg, msg_len);
             printf("message relayed\n");
             free(bc_msg);
+            // recursive call until theres no message left
+            lws_callback_on_writable(wsi);
             break;
         case LWS_CALLBACK_CLOSED:
             printf("Connection closed\n");
