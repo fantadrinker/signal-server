@@ -3,9 +3,14 @@
 
 #include "session_manager.h"
 #include "msg_frag_manager.h"
+#include "message_queue.h"
 // some global variables
 
 static int port = 8000;
+
+struct pss {
+    int send_a_ping;
+};
 
 void lws_padded_write(struct lws *wsi, const char* message, size_t len) {
     unsigned char* buf = malloc(LWS_PRE + len);
@@ -33,14 +38,13 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
     switch (type) {
         case BROADCASTER_INIT:
             ; // empty statement to fix compiler error
-            printf("creating new broadcast\n");
             const char* br_id = new_broadcast(broadcast_id, wsi);
             if (br_id == NULL) {
                 size_t len = strlen("Error creating broadcast") + 1;
                 message = malloc(len);
                 memcpy(message, "Error creating broadcast", len);
             }
-            printf("created new broadcast %s\n", br_id);
+            printf("created new broadcast %s with socket %p\n", br_id, wsi);
             struct json_object *response_obj = json_object_new_object();
             json_object_object_add(response_obj, "broadcast_id", json_object_new_string(br_id));
             json_object_object_add(response_obj, "message_type", json_object_new_string("broadcast_created")); // TODO: constant
@@ -63,7 +67,8 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
                 break;
             }
             printf("found viewer, sending message to viewer\n");
-            lws_padded_write(viewer, (char*)msg, len);
+            queue_message_for_sock(viewer, msg, len);
+            lws_callback_on_writable(viewer);
             break;
         default:
             message_len = strlen("Unknown message type: ") + 3;
@@ -129,7 +134,8 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
                 memcpy(message, "Error finding broadcaster", len);
             }
             printf("found broadcaster %p\n", broadcaster);
-            lws_padded_write(broadcaster, (char*)msg, len);
+            queue_message_for_sock(broadcaster, msg, len);
+            lws_callback_on_writable(broadcaster);
             printf("sent message to broadcaster\n");
             break;
         default:
@@ -174,12 +180,28 @@ static int callback_echo(struct lws *wsi, enum lws_callback_reasons reason, void
 
 static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len)
 {
+    struct pss *pss = (struct pss *)user;
     int retval = 0;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             printf("broadcast-protocol: Connection established\n");
+            pss->send_a_ping = 1;
+            lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
             break;
 
+        case LWS_CALLBACK_TIMER:
+            if (pss->send_a_ping == 0) {
+                printf("did not receive ping, is connection dead?\n");
+            } else {
+                unsigned char* buf = malloc(LWS_PRE + 4);
+                memcpy(buf + LWS_PRE, "ping", 4);
+                lws_write(wsi, buf + LWS_PRE, 4, LWS_WRITE_TEXT);
+                free(buf);
+                pss->send_a_ping = 0;
+                lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+            }
+            break;
+            
         case LWS_CALLBACK_RECEIVE:
             ; // empty statement to fix compiler error
             size_t existing_msg_len = 0;
@@ -188,6 +210,16 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
             if (!remaining && lws_is_final_fragment(wsi)) {
                 if (!msg) {
                     // no fragments, just process the message
+                    if (len == 4 && memcmp(in, "pong", len) == 0) {
+                        lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+                        pss -> send_a_ping = 1;
+                        return 0;
+                    }
+
+                    if (len == 4 && memcmp(in, "ping", len) == 0) {
+                        lws_padded_write(wsi, "pong", 4);
+                        return 0;
+                    }
                     broadcaster_message_handler(wsi, in, len);
                     break;
                 }
@@ -201,9 +233,23 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
             } else
                 create_or_append_fragment(wsi, in, len);
             break;
+        case LWS_CALLBACK_SERVER_WRITEABLE:
+            printf("broadcaster protocol: server writeable\n");
+            size_t msg_len = 0;
+            unsigned char* bc_msg = get_message_for_sock(wsi, &msg_len);
+            if (!bc_msg) {
+                printf("no message to send\n");
+                break;
+            }
+            printf("relaying message to broadcaster\n");
+            lws_padded_write(wsi, bc_msg, msg_len);
+            printf("message relayed\n");
+            free(bc_msg);
+            // recursive call until theres no message left
+            lws_callback_on_writable(wsi);
+            break;
         case LWS_CALLBACK_CLOSED:
             printf("Connection closed\n");
-            // TODO: find broadcast session and clean it up
             free_broadcast(wsi);
             break;
         default:
@@ -215,31 +261,69 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
 
 static int callback_viewer(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len)
 {
+    struct pss *pss = (struct pss *)user;
     int retval = 0;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
-            printf("viewer protocal: Connection established\n");
+            printf("viewer protocal: Connection established\n"); 
+            pss->send_a_ping = 1;           
+            lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
             break;
-
+        case LWS_CALLBACK_TIMER:
+            if (pss->send_a_ping == 0) {
+                printf("did not receive ping, is connection dead?\n");
+            } else {
+                unsigned char* buf = malloc(LWS_PRE + 4);
+                memcpy(buf + LWS_PRE, "ping", 4);
+                lws_write(wsi, buf + LWS_PRE, 4, LWS_WRITE_TEXT);
+                free(buf);
+                pss->send_a_ping = 0;
+                lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+            }
+            break;
         case LWS_CALLBACK_RECEIVE:
             ; // empty statement to fix compiler error
             size_t existing_msg_len = 0;
             unsigned char* msg = get_message_fragment(wsi, &existing_msg_len);
             const size_t remaining = lws_remaining_packet_payload(wsi);
             if (!remaining && lws_is_final_fragment(wsi)) {
-                if (msg) {
-                    msg = realloc(msg, len + existing_msg_len);
-                    memcpy(msg + existing_msg_len, in, len);
-                } else {
+                if (!msg) {
                     // no fragments, just process the message
+                    if (len == 4 && memcmp(in, "pong", len) == 0) {
+                        lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+                        pss -> send_a_ping = 1;
+                        return 0;
+                    }
+
+                    if (len == 4 && memcmp(in, "ping", len) == 0) {
+                        lws_padded_write(wsi, "pong", 4);
+                        return 0;
+                    }
                     viewer_message_handler(wsi, in, len);
                     break;
                 }
+                msg = realloc(msg, len + existing_msg_len);
+                memcpy(msg + existing_msg_len, in, len);
                 viewer_message_handler(wsi, msg, len + existing_msg_len);
                 // we could free the message here, but it's going to be hard to manage
                 free_fragments(wsi);
             } else
                 create_or_append_fragment(wsi, in, len);
+            break;
+        case LWS_CALLBACK_SERVER_WRITEABLE:
+            printf("viewer protocol: server writeable\n");
+            size_t msg_len = 0;
+            const char* vr_msg = get_message_for_sock(wsi, &msg_len);
+            if (!vr_msg) {
+                printf("no message to send\n");
+                break;
+            }
+            printf("relaying message to viewer\n");
+            lws_padded_write(wsi, vr_msg, msg_len);
+            printf("message relayed\n");
+            free(vr_msg);
+            // recursive call until theres no message left
+            lws_callback_on_writable(wsi);
             break;
         case LWS_CALLBACK_CLOSED:
             printf("viewer protocol: Connection closed\n");
@@ -256,14 +340,14 @@ int main(void)
     struct lws_context_creation_info info;
     struct lws_protocols protocols[] = {
         { "echo-protocol", callback_echo, 0, 128 },
-        { "broadcast-protocol", callback_broadcaster, 0, 512},
-        { "viewer-protocol", callback_viewer, 0, 512},
+        { "broadcast-protocol", callback_broadcaster, sizeof(struct pss), 512},
+        { "viewer-protocol", callback_viewer, sizeof(struct pss), 512},
         { NULL, NULL, 0, 0 } // Terminator
     };
 
     memset(&info, 0, sizeof(info));
     info.port = port;
-    info.protocols = protocols;
+    info.protocols = protocols; 
 
     printf("Starting server on port %d\n, pid %d\n", port, getpid());
 
