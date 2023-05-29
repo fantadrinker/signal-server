@@ -15,8 +15,6 @@ struct Broadcast {
     char* broadcast_id;
     // web socket between the server and the broadcaster
     struct lws* broadcaster;
-    // flag to indicate if broadcaster responded to ping, if not then we can disconnect the broadcast
-    int sent_ping;
 
     struct SessionMessage* messages;
 
@@ -30,8 +28,6 @@ struct BroadcastSession {
     struct lws* broadcaster;
     // array of web sockets between the server and the viewers
     struct lws* viewer;
-
-    int sent_ping;
 
     struct SessionMessage* messages;
 
@@ -83,7 +79,6 @@ const char* new_broadcast(const char* broadcast_id, struct lws* broadcaster) {
     broadcast->broadcast_id = malloc(len_broadcast_id);
     memcpy(broadcast->broadcast_id, broadcast_id, len_broadcast_id);
     broadcast->broadcaster = broadcaster;
-    broadcast->sent_ping = 0;
 
     printf("registering new broadcast with id %s\n", broadcast_id);
     // add the broadcast to the list of broadcasts
@@ -107,7 +102,6 @@ const char* _new_session(struct lws* broadcaster, struct lws* viewer) {
     session->session_id = _gen_sesh_id();
     session->broadcaster = broadcaster;
     session->viewer = viewer;
-    session->sent_ping = 0;
 
     pthread_mutex_lock(&broadcast_session_lock);
     // add the session to the list of sessions
@@ -216,7 +210,6 @@ int free_broadcast(struct lws* wsi) {
             found_session = sess_ptr;
             if (!sess_prev) {
                 broadcast_sessions = sess_ptr->next;
-                sess_ptr = broadcast_sessions;
             } else {
                 sess_prev->next = sess_ptr->next;
             }
@@ -263,7 +256,7 @@ int free_session_with_viewer(struct lws* viewer) {
         pthread_mutex_unlock(&broadcast_session_lock);
         return 0;
     }
-    if (prev == NULL) {
+    if (!prev) {
         broadcast_sessions = ptr->next;
     } else {
         prev->next = ptr->next;
