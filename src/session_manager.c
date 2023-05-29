@@ -198,12 +198,13 @@ int free_broadcast(struct lws* wsi) {
         pthread_mutex_unlock(&broadcast_lock);
         return 0;
     }
-    if (prev == NULL) {
+    if (!prev) {
         broadcasts = ptr->next;
     } else {
         prev->next = ptr->next;
     }
     pthread_mutex_unlock(&broadcast_lock);
+    printf("broadcast freed, deleting sessions\n");
     pthread_mutex_lock(&broadcast_session_lock);
     // then find all the sessions with the given broadcaster socket
     struct BroadcastSession* sess_prev = NULL;
@@ -212,7 +213,7 @@ int free_broadcast(struct lws* wsi) {
     while (sess_ptr) {
         if (sess_ptr->broadcaster == wsi) {
             // free the session
-            if (sess_prev == NULL) {
+            if (sess_prev) {
                 broadcast_sessions = sess_ptr->next;
                 sess_ptr = broadcast_sessions;
             } else {
@@ -233,6 +234,7 @@ int free_broadcast(struct lws* wsi) {
     }
     free(broadcast->broadcast_id);
     free(broadcast);
+    printf("broadcast and sessions freed\n");
     // debug print 
     pthread_mutex_lock(&broadcast_lock);
     _debug_print_all_broadcasts();
