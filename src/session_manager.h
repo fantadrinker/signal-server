@@ -11,8 +11,6 @@ enum MessageType {
 
 const char* new_broadcast(const char* broadcast_id, struct lws* broadcaster);
 
-const char* new_session(struct lws* broadcaster, struct lws* viewer);
-
 int free_broadcast(struct lws* broadcaster);
 
 int free_session_with_viewer(struct lws* viewer);

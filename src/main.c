@@ -8,6 +8,10 @@
 
 static int port = 8000;
 
+struct pss {
+    int send_a_ping;
+};
+
 void lws_padded_write(struct lws *wsi, const char* message, size_t len) {
     unsigned char* buf = malloc(LWS_PRE + len);
     memcpy(buf + LWS_PRE, message, len);
@@ -32,10 +36,6 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
     size_t message_len = 0;
     
     switch (type) {
-        case PONG:
-            ; // empty statement to fix compiler error
-
-            break;
         case BROADCASTER_INIT:
             ; // empty statement to fix compiler error
             const char* br_id = new_broadcast(broadcast_id, wsi);
@@ -182,21 +182,26 @@ static int callback_echo(struct lws *wsi, enum lws_callback_reasons reason, void
 
 static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len)
 {
+    struct pss *pss = (struct pss *)user;
     int retval = 0;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             printf("broadcast-protocol: Connection established\n");
+            pss->send_a_ping = 1;
             lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
             break;
 
         case LWS_CALLBACK_TIMER:
-            lws_padded_write(wsi, "ping", 4);
-            break;
-        
-        case LWS_CALLBACK_RECEIVE_PONG:
-            // when will this get triggered?
-            printf("received pong\n");
-            lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+            if (pss->send_a_ping == 0) {
+                printf("did not receive ping, is connection dead?\n");
+            } else {
+                unsigned char* buf = malloc(LWS_PRE + 4);
+                memcpy(buf + LWS_PRE, "ping", 4);
+                lws_write(wsi, buf + LWS_PRE, 4, LWS_WRITE_TEXT);
+                free(buf);
+                pss->send_a_ping = 0;
+                lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+            }
             break;
             
         case LWS_CALLBACK_RECEIVE:
@@ -207,6 +212,16 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
             if (!remaining && lws_is_final_fragment(wsi)) {
                 if (!msg) {
                     // no fragments, just process the message
+                    if (len == 4 && memcmp(in, "pong", len) == 0) {
+                        lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+                        pss -> send_a_ping = 1;
+                        return 0;
+                    }
+
+                    if (len == 4 && memcmp(in, "ping", len) == 0) {
+                        lws_padded_write(wsi, "pong", 4);
+                        return 0;
+                    }
                     broadcaster_message_handler(wsi, in, len);
                     break;
                 }
@@ -247,14 +262,25 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
 
 static int callback_viewer(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len)
 {
+    struct pss *pss = (struct pss *)user;
     int retval = 0;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
-            printf("viewer protocal: Connection established\n");            
+            printf("viewer protocal: Connection established\n"); 
+            pss->send_a_ping = 1;           
             lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
             break;
         case LWS_CALLBACK_TIMER:
-            lws_padded_write(wsi, "ping", 4);
+            if (pss->send_a_ping == 0) {
+                printf("did not receive ping, is connection dead?\n");
+            } else {
+                unsigned char* buf = malloc(LWS_PRE + 4);
+                memcpy(buf + LWS_PRE, "ping", 4);
+                lws_write(wsi, buf + LWS_PRE, 4, LWS_WRITE_TEXT);
+                free(buf);
+                pss->send_a_ping = 0;
+                lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+            }
             break;
         case LWS_CALLBACK_RECEIVE:
             ; // empty statement to fix compiler error
@@ -262,14 +288,23 @@ static int callback_viewer(struct lws *wsi, enum lws_callback_reasons reason, vo
             unsigned char* msg = get_message_fragment(wsi, &existing_msg_len);
             const size_t remaining = lws_remaining_packet_payload(wsi);
             if (!remaining && lws_is_final_fragment(wsi)) {
-                if (msg) {
-                    msg = realloc(msg, len + existing_msg_len);
-                    memcpy(msg + existing_msg_len, in, len);
-                } else {
+                if (!msg) {
                     // no fragments, just process the message
+                    if (len == 4 && memcmp(in, "pong", len) == 0) {
+                        lws_set_timer_usecs(wsi, 5 * LWS_USEC_PER_SEC);
+                        pss -> send_a_ping = 1;
+                        return 0;
+                    }
+
+                    if (len == 4 && memcmp(in, "ping", len) == 0) {
+                        lws_padded_write(wsi, "pong", 4);
+                        return 0;
+                    }
                     viewer_message_handler(wsi, in, len);
                     break;
                 }
+                msg = realloc(msg, len + existing_msg_len);
+                memcpy(msg + existing_msg_len, in, len);
                 viewer_message_handler(wsi, msg, len + existing_msg_len);
                 // we could free the message here, but it's going to be hard to manage
                 free_fragments(wsi);
@@ -288,6 +323,8 @@ static int callback_viewer(struct lws *wsi, enum lws_callback_reasons reason, vo
             lws_padded_write(wsi, vr_msg, msg_len);
             printf("message relayed\n");
             free(vr_msg);
+            // recursive call until theres no message left
+            lws_callback_on_writable(wsi);
             break;
         case LWS_CALLBACK_CLOSED:
             printf("viewer protocol: Connection closed\n");
@@ -304,8 +341,8 @@ int main(void)
     struct lws_context_creation_info info;
     struct lws_protocols protocols[] = {
         { "echo-protocol", callback_echo, 0, 128 },
-        { "broadcast-protocol", callback_broadcaster, 0, 512},
-        { "viewer-protocol", callback_viewer, 0, 512},
+        { "broadcast-protocol", callback_broadcaster, sizeof(struct pss), 512},
+        { "viewer-protocol", callback_viewer, sizeof(struct pss), 512},
         { NULL, NULL, 0, 0 } // Terminator
     };
 

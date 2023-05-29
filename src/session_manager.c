@@ -49,7 +49,7 @@ pthread_mutex_t broadcast_session_lock = PTHREAD_MUTEX_INITIALIZER;
 struct BroadcastSession* broadcast_sessions = NULL;
 
 // need to free later
-char* gen_sesh_id() {
+char* _gen_sesh_id() {
     uuid_t uuid;
     uuid_generate_random(uuid);
     char* session_id = malloc(37);
@@ -101,10 +101,10 @@ const char* new_broadcast(const char* broadcast_id, struct lws* broadcaster) {
     return broadcast->broadcast_id;
 }
 
-const char* new_session(struct lws* broadcaster, struct lws* viewer) {
+const char* _new_session(struct lws* broadcaster, struct lws* viewer) {
     struct BroadcastSession* session = malloc(sizeof(struct BroadcastSession));
     // generate a unique session id
-    session->session_id = gen_sesh_id();
+    session->session_id = _gen_sesh_id();
     session->broadcaster = broadcaster;
     session->viewer = viewer;
     session->sent_ping = 0;
@@ -156,10 +156,10 @@ const char* join_broadcast(struct lws* viewer, const char* broadcast_id) {
         return NULL;
     }
     // create session 
-    return new_session(broadcast->broadcaster, viewer);
+    return _new_session(broadcast->broadcaster, viewer);
 }
 
-void debug_print_all_broadcasts() {
+void _debug_print_all_broadcasts() {
     struct Broadcast* ptr = broadcasts;
     while (ptr) {
         printf("Broadcast %s\n", ptr->broadcast_id);
@@ -167,7 +167,7 @@ void debug_print_all_broadcasts() {
     }
 }
 
-void debug_print_all_sessions() {
+void _debug_print_all_sessions() {
     struct BroadcastSession* ptr = broadcast_sessions;
     while (ptr) {
         printf("Session %s\n", ptr->session_id);
@@ -235,10 +235,10 @@ int free_broadcast(struct lws* wsi) {
     free(broadcast);
     // debug print 
     pthread_mutex_lock(&broadcast_lock);
-    debug_print_all_broadcasts();
+    _debug_print_all_broadcasts();
     pthread_mutex_unlock(&broadcast_lock);
     pthread_mutex_lock(&broadcast_session_lock);
-    debug_print_all_sessions();
+    _debug_print_all_sessions();
     pthread_mutex_unlock(&broadcast_session_lock);
     return 0;
 }
