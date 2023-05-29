@@ -68,7 +68,6 @@ static int broadcaster_message_handler(struct lws *wsi, unsigned char *msg, size
             }
             printf("found viewer, sending message to viewer\n");
             queue_message_for_sock(viewer, msg, len);
-            // lws_padded_write(viewer, (char*)msg, len);
             lws_callback_on_writable(viewer);
             break;
         default:
@@ -136,7 +135,6 @@ static int viewer_message_handler(struct lws *wsi, unsigned char *msg, size_t le
             }
             printf("found broadcaster %p\n", broadcaster);
             queue_message_for_sock(broadcaster, msg, len);
-            // lws_padded_write(broadcaster, (char*)msg, len); // fail
             lws_callback_on_writable(broadcaster);
             printf("sent message to broadcaster\n");
             break;
@@ -252,7 +250,6 @@ static int callback_broadcaster(struct lws *wsi, enum lws_callback_reasons reaso
             break;
         case LWS_CALLBACK_CLOSED:
             printf("Connection closed\n");
-            // TODO: find broadcast session and clean it up
             free_broadcast(wsi);
             break;
         default:
