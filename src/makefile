@@ -5,10 +5,10 @@ LDFLAGS = $(shell pkg-config --libs libwebsockets) $(shell pkg-config --libs jso
 
 objects = session_manager.o main.o msg_frag_manager.o message_queue.o
 signal-server: $(objects)
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(objects) -o signal-server $(LDFLAGS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(objects) -o bin/signal-server $(LDFLAGS)
 
 %.o : %.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(objects) signal-server
+	rm -f $(objects) bin/signal-server
