@@ -1,2 +1,3 @@
 src/*.o
-src/signal-server
+src/bin/signal-server
+.DS_Store
