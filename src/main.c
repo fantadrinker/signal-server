@@ -8,7 +8,7 @@
 #define LOCAL_RESOURCE_PATH "/etc/ssl/certs"
 char *resource_path = LOCAL_RESOURCE_PATH;
 
-static int port = 8000;
+static int port = 443;
 
 struct pss {
     int send_a_ping;
@@ -339,7 +339,7 @@ static int callback_viewer(struct lws *wsi, enum lws_callback_reasons reason, vo
 int main(void)
 {
     uint64_t opts = 0;
-    int use_ssl = 0;
+    int use_ssl = 1;
 
     struct lws_context *context;
     struct lws_context_creation_info info;
@@ -349,14 +349,14 @@ int main(void)
         { "viewer-protocol", callback_viewer, sizeof(struct pss), 512},
         { NULL, NULL, 0, 0 } // Terminator
     };
-    
+
+    memset(&info, 0, sizeof(info));
     info.port = port;
     info.protocols = protocols; 
     if (use_ssl) {
         // set up ssl, it should work but apparently doesn't
         opts |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 
-        memset(&info, 0, sizeof(info));
         info.options = opts;
         info.ssl_cert_filepath = "/etc/ssl/certs/lws-sig-serv.crt";
         info.ssl_private_key_filepath = "/etc/ssl/certs/lws-sig-serv.key";

@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu17 -Wall
+CFLAGS = -std=gnu11 -Wall
 CPPFLAGS = -I/opt/homebrew/opt/openssl@3/include $(shell pkg-config --cflags libwebsockets) $(shell pkg-config --cflags json-c) $(shell pkg-config --cflags uuid)
 LDFLAGS = $(shell pkg-config --libs libwebsockets) $(shell pkg-config --libs json-c) $(shell pkg-config --libs uuid)
 
